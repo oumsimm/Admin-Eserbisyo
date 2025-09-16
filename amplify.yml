@@ -4,16 +4,15 @@ applications:
       phases:
         preBuild:
           commands:
-            - cd Admin
             - npm ci --no-audit --no-fund
         build:
           commands:
             - npm run export
       artifacts:
-        baseDirectory: Admin/out
+        baseDirectory: out
         files:
           - '**/*'
       cache:
         paths:
-          - Admin/node_modules/**/*
-    appRoot: /
+          - node_modules/**/*
+    appRoot: Admin
