@@ -1,0 +1,19 @@
+version: 1
+applications:
+  - frontend:
+      phases:
+        preBuild:
+          commands:
+            - cd Admin
+            - npm ci --no-audit --no-fund
+        build:
+          commands:
+            - npm run export
+      artifacts:
+        baseDirectory: Admin/out
+        files:
+          - '**/*'
+      cache:
+        paths:
+          - Admin/node_modules/**/*
+    appRoot: /

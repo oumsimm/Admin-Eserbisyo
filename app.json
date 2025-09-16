@@ -1,0 +1,79 @@
+{
+  "expo": {
+    "name": "Capstone2New",
+    "slug": "capstone2new",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "capstone2new",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": false,
+    "sdkVersion": "54.0.0",
+    "runtimeVersion": "54.0.0",
+    "platforms": ["ios", "android", "web"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.george13.Capstone2New",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "This app needs location access to show nearby events and provide directions to community service locations.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs location access to show nearby events and provide directions to community service locations.",
+        "NSLocationAlwaysUsageDescription": "This app needs location access to show nearby events and provide directions to community service locations."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.george13.Capstone2New",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ],
+      "expo-camera",
+      "expo-barcode-scanner",
+      "expo-font",
+      "expo-location"
+    ],
+
+    "extra": {
+      "eas": {
+        "projectId": "165c3142-2142-4a81-aafa-637c18549eca"
+      },
+      "EXPO_PUBLIC_SUPABASE_URL": "https://qjrxvrxeskknweqqarhr.supabase.co",
+      "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFqcnh2cnhlc2trbndlcXFhcmhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcxMzAzOTksImV4cCI6MjA3MjcwNjM5OX0.YsBGIl_PwjafKwkZZw3V2E0cRwvR7edI8eLG0q1wMYw",
+      "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyDa_I7V-fP0CSSq5J8gXBGR5XZyQ1k_PhU",
+      "EXPO_PUBLIC_GOOGLE_AI_API_KEY": "YOUR_GOOGLE_AI_API_KEY_HERE",
+      "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "408384580535-7l4pkc51d6ur958smvb7apc5sulcilvc.apps.googleusercontent.com",
+      "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "408384580535-lpe4g0s15gc4pg9ge6i5sts0t9s3ste3.apps.googleusercontent.com",
+      "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "408384580535-iundf2lio55qrl3pj0j2jq7quv85ff6r.apps.googleusercontent.com",
+      "EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID": "408384580535-7l4pkc51d6ur958smvb7apc5sulcilvc.apps.googleusercontent.com",
+      "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID_PROD": "",
+      "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID_PROD": "",
+      "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID_PROD": "",
+      "EXPO_PUBLIC_FORCE_EXPO_PROXY": false
+    },
+    "owner": "george13",
+
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
