@@ -6,15 +6,24 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
     },
     "production": {
       "autoIncrement": true,
       "resourceClass": "medium",
-      "node": "20.17.0"
+      "node": "20.17.0",
+      "android": {
+        "buildType": "app-bundle"
+      }
     }
   },
   "submit": {
