@@ -1,3 +1,4 @@
+import 'react-native-get-random-values';
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -6,10 +7,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { View, Text, ActivityIndicator } from 'react-native';
 import Toast from 'react-native-toast-message';
+import { UserProvider } from './contexts/UserContext';
+import { QRProvider } from './contexts/QRContext';
+import useUser from './screen/useUser'; // Import the useUser hook
+import ProfileScreen from './screen/ProfileScreen';
 
 // Initialize Firebase
 import './config/firebaseConfig';
-import { UserProvider, useUser } from './contexts/UserContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import onboardingService from './services/onboardingService';
 
@@ -18,7 +22,6 @@ import DashboardScreen from './screen/DashboardScreen';
 import MapScreenEnhanced from './screen/MapScreenEnhanced';
 import EventsScreen from './screen/EventsScreen';
 import LeaderboardScreen from './screen/LeaderboardScreen';
-import ProfileScreen from './screen/ProfileScreen';
 // Admin screens
 import AdminDashboard from './screen/admin/AdminDashboard';
 import AdminUsers from './screen/admin/AdminUsers';
@@ -141,7 +144,7 @@ function AppNavigator() {
     }
     if (user) {
       const needsCompletion = !userData || !userData.gender || !userData.barangay;
-      return needsCompletion ? "CompleteProfile" : "MainTabs";
+      return needsCompletion ? "Login" : "MainTabs";
     }
     return "Login";
   };

@@ -48,7 +48,7 @@ The API key has been added to your `app.json`:
   "expo": {
     "extra": {
       "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyDa_I7V-fP0CSSq5J8gXBGR5XZyQ1k_PhU",
-      "EXPO_PUBLIC_GOOGLE_AI_API_KEY": "YOUR_GOOGLE_AI_API_KEY_HERE"
+      "EXPO_PUBLIC_GOOGLE_AI_API_KEY": "AIzaSyA_ZgsmB8-23SHiNH3Lx8r6TZH9qD6a6Fc"
     }
   }
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions, Image, FlatList, Modal } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions, FlatList, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useUser } from '../contexts/UserContext';
 import { useNavigation } from '@react-navigation/native';
 import { 
@@ -193,6 +194,7 @@ export default function ProfileHeader({ onProfilePress }) {
             <Image
               source={{ uri: userData.profilePic }}
               style={{ width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }}
+              contentFit="cover"
               accessibilityLabel="User avatar"
             />
           ) : (

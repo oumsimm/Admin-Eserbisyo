@@ -279,7 +279,7 @@ const SimpleQRScanner = ({
               <View style={styles.helpItem}>
                 <Ionicons name="checkmark-circle" size={16} color="#10b981" />
                 <Text style={styles.helpText}>
-                  Tap "Process QR Code" to scan the data
+                  Tap &quot;Process QR Code&quot; to scan the data
                 </Text>
               </View>
             </View>

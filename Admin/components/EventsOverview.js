@@ -1,3 +1,4 @@
+import React from 'react';
 import { useState, useEffect } from 'react';
 import { CalendarIcon, UsersIcon, MapPinIcon, ClockIcon } from 'lucide-react';
 import { db } from '../lib/firebase';

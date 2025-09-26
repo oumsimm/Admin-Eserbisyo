@@ -1,3 +1,4 @@
+import React from 'react';
 import '../styles/globals.css';
 import { AuthProvider } from '../hooks/useAuth';
 import Layout from '../components/Layout';

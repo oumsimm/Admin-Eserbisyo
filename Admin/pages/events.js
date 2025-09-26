@@ -2,7 +2,22 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { useAuth } from '../hooks/useAuth';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { 
+  collection, 
+  onSnapshot, 
+  query, 
+  orderBy, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  serverTimestamp, 
+  writeBatch, 
+  getDoc, 
+  getDocs,
+  increment,
+  where 
+} from 'firebase/firestore';
 import { 
   Plus as PlusIcon, 
   Search as SearchIcon, 
@@ -23,11 +38,16 @@ import {
   Pause as PauseIcon,
   AlertTriangle as AlertTriangleIcon,
   Copy as CopyIcon,
-  Download as DownloadIcon
+  Download as DownloadIcon,
+  QrCode as QrCodeIcon,
+  Scan as ScanIcon,
+  Award as AwardIcon
 } from 'lucide-react';
 import EventModal from '../components/EventModal';
-
-// Events are loaded from Firebase
+import QRScannerModal from '../components/QRScannerModal';
+import FeedbackModal from '../components/FeedbackModal';
+import QRTestGenerator from '../components/QRTestGenerator';
+import toast from 'react-hot-toast';
 
 export default function Events() {
   const { user, loading, isAdmin } = useAuth();
@@ -44,6 +64,14 @@ export default function Events() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  
+  // QR Scanning states
+  const [showQRScanner, setShowQRScanner] = useState(false);
+  const [selectedEventsForScanning, setSelectedEventsForScanning] = useState(new Set());
+  const [scannedUser, setScannedUser] = useState(null);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [awardedEvents, setAwardedEvents] = useState([]);
+  const [showQRTest, setShowQRTest] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -55,23 +83,35 @@ export default function Events() {
     if (!loading && user) {
       const q = query(collection(db, 'events'), orderBy('createdAt', 'desc'));
       const unsubscribe = onSnapshot(q, (snapshot) => {
-        const liveEvents = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const liveEvents = snapshot.docs.map((d) => ({ 
+          id: d.id, 
+          ...d.data(),
+          // Ensure points field exists
+          points: d.data().points || 10,
+          participants: d.data().participants || 0,
+          maxParticipants: d.data().maxParticipants || 100
+        }));
         setEvents(liveEvents);
+      }, (error) => {
+        console.error('Error fetching events:', error);
+        toast.error('Failed to load events');
       });
       return () => unsubscribe();
     }
   }, [user, loading]);
 
   if (loading || !user) {
-    return null;
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary-600"></div>
+      </div>
+    );
   }
-  // Temporarily disabled admin check for development
-  // if (!isAdmin) return null;
 
   const filteredEvents = events.filter(event => {
-    const matchesSearch = event.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         event.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         event.organizer.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = event.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         event.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         event.organizer?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || event.status === statusFilter;
     const matchesCategory = categoryFilter === 'all' || event.category === categoryFilter;
     return matchesSearch && matchesStatus && matchesCategory;
@@ -82,15 +122,20 @@ export default function Events() {
       case 'date':
         return new Date(a.date) - new Date(b.date);
       case 'title':
-        return a.title.localeCompare(b.title);
+        return (a.title || '').localeCompare(b.title || '');
       case 'participants':
-        return b.participants - a.participants;
+        return (b.participants || 0) - (a.participants || 0);
       case 'created':
-        return new Date(b.createdAt) - new Date(a.createdAt);
+        const aCreated = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+        const bCreated = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+        return bCreated - aCreated;
       default:
         return 0;
     }
   });
+
+  // Get completed events for QR scanning
+  const completedEvents = sortedEvents.filter(event => event.status === 'completed');
 
   const getStatusBadge = (status) => {
     const styles = {
@@ -100,7 +145,7 @@ export default function Events() {
       cancelled: 'bg-red-100 text-red-800'
     };
     
-    return `inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${styles[status]}`;
+    return `inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${styles[status] || 'bg-gray-100 text-gray-800'}`;
   };
 
   const getCategoryIcon = (category) => {
@@ -130,8 +175,10 @@ export default function Events() {
     if (confirm('Are you sure you want to delete this event?')) {
       try {
         await deleteDoc(doc(db, 'events', eventId));
+        toast.success('Event deleted successfully');
       } catch (e) {
-        alert('Failed to delete event: ' + (e?.message || 'Unknown error'));
+        console.error('Delete error:', e);
+        toast.error('Failed to delete event: ' + (e?.message || 'Unknown error'));
       }
     }
   };
@@ -143,18 +190,252 @@ export default function Events() {
           ...eventData,
           updatedAt: serverTimestamp(),
         });
+        toast.success('Event updated successfully');
       } else {
         await addDoc(collection(db, 'events'), {
           ...eventData,
           participants: 0,
           image: getCategoryIcon(eventData.category),
+          points: eventData.points || 10, // Default points
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
+          createdBy: user.uid,
         });
+        toast.success('Event created successfully');
       }
       setShowModal(false);
     } catch (e) {
-      alert('Failed to save event: ' + (e?.message || 'Unknown error'));
+      console.error('Save error:', e);
+      toast.error('Failed to save event: ' + (e?.message || 'Unknown error'));
+    }
+  };
+
+  // QR Scanning Functions
+  const handleStartQRScanning = () => {
+    if (completedEvents.length === 0) {
+      toast.error('No completed events available for point awarding');
+      return;
+    }
+    setSelectedEventsForScanning(new Set());
+    setShowQRScanner(true);
+  };
+
+  const handleQRScanSuccess = async (qrData) => {
+    try {
+      setIsProcessing(true);
+      
+      // Parse QR data
+      let userData;
+      try {
+        userData = JSON.parse(qrData);
+        if (!userData.userId) {
+          throw new Error('Invalid QR code format');
+        }
+      } catch {
+        // If not JSON, assume it's a simple user ID
+        userData = { userId: qrData };
+      }
+
+      // Validate user exists
+      const userDoc = await getDoc(doc(db, 'users', userData.userId));
+      if (!userDoc.exists()) {
+        throw new Error('User not found');
+      }
+
+      const userInfo = { id: userData.userId, ...userDoc.data() };
+      
+      // Check for selected events
+      if (selectedEventsForScanning.size === 0) {
+        throw new Error('Please select at least one completed event to award points');
+      }
+
+      // Check for duplicate point awards
+      const selectedEventIds = Array.from(selectedEventsForScanning);
+      const duplicateChecks = await Promise.all(
+        selectedEventIds.map(async (eventId) => {
+          try {
+            const awardQuery = query(
+              collection(db, 'pointAwards'),
+              where('userId', '==', userData.userId),
+              where('eventId', '==', eventId)
+            );
+            const awardSnapshot = await getDocs(awardQuery);
+            return { eventId, hasDuplicate: !awardSnapshot.empty };
+          } catch (error) {
+            console.error('Error checking duplicates for event', eventId, error);
+            return { eventId, hasDuplicate: false };
+          }
+        })
+      );
+
+      const duplicates = duplicateChecks.filter(check => check.hasDuplicate);
+      if (duplicates.length > 0) {
+        const duplicateEventTitles = duplicates.map(d => 
+          events.find(e => e.id === d.eventId)?.title || 'Unknown Event'
+        ).join(', ');
+        throw new Error(`Points already awarded for: ${duplicateEventTitles}`);
+      }
+
+      setScannedUser(userInfo);
+      setShowQRScanner(false);
+      setIsProcessing(false);
+      
+      // Proceed to award points
+      await awardPointsToUser(userInfo, selectedEventIds);
+      
+    } catch (error) {
+      console.error('QR scan error:', error);
+      toast.error(error.message || 'Failed to process QR code');
+      setIsProcessing(false);
+    }
+  };
+
+  const awardPointsToUser = async (userInfo, eventIds) => {
+    try {
+      setIsProcessing(true);
+      const batch = writeBatch(db);
+      
+      let totalPoints = 0;
+      const awardedEventDetails = [];
+
+      // Process each selected event
+      for (const eventId of eventIds) {
+        const event = events.find(e => e.id === eventId);
+        if (!event) continue;
+
+        const eventPoints = event.points || 10;
+        totalPoints += eventPoints;
+        awardedEventDetails.push({
+          id: eventId,
+          title: event.title,
+          points: eventPoints,
+          date: event.date
+        });
+
+        // Create point award record
+        const pointAwardRef = doc(collection(db, 'pointAwards'));
+        batch.set(pointAwardRef, {
+          userId: userInfo.id,
+          eventId: eventId,
+          eventTitle: event.title,
+          pointsAwarded: eventPoints,
+          awardedBy: user.uid,
+          awardedAt: serverTimestamp(),
+          status: 'awarded'
+        });
+
+        // Update event stats
+        const eventRef = doc(db, 'events', eventId);
+        batch.update(eventRef, {
+          pointsAwarded: increment(eventPoints),
+          totalPointsAwarded: increment(eventPoints),
+          lastPointAward: serverTimestamp()
+        });
+      }
+
+      // Update user's total points
+      const userRef = doc(db, 'users', userInfo.id);
+      batch.update(userRef, {
+        totalPoints: increment(totalPoints),
+        lastPointAward: serverTimestamp(),
+        pointHistory: increment(1)
+      });
+
+      // Create notification for user
+      const notificationRef = doc(collection(db, 'notifications'));
+      batch.set(notificationRef, {
+        userId: userInfo.id,
+        title: 'Points Awarded! 🎉',
+        message: `You've earned ${totalPoints} points for participating in ${eventIds.length} event${eventIds.length > 1 ? 's' : ''}!`,
+        type: 'point_award',
+        read: false,
+        createdAt: serverTimestamp(),
+        metadata: {
+          totalPoints,
+          eventIds,
+          eventCount: eventIds.length
+        }
+      });
+
+      // Log admin action
+      const adminActionRef = doc(collection(db, 'adminActions'));
+      batch.set(adminActionRef, {
+        type: 'point_award',
+        adminId: user.uid,
+        adminName: user.displayName || user.email,
+        targetUserId: userInfo.id,
+        eventIds: eventIds,
+        pointsAwarded: totalPoints,
+        timestamp: serverTimestamp(),
+        details: {
+          userName: userInfo.displayName || userInfo.email,
+          events: awardedEventDetails
+        }
+      });
+
+      await batch.commit();
+
+      setAwardedEvents(awardedEventDetails);
+      setIsProcessing(false);
+      
+      toast.success(`Successfully awarded ${totalPoints} points to ${userInfo.displayName || userInfo.email}`);
+      
+      // Show feedback modal
+      setTimeout(() => {
+        setShowFeedbackModal(true);
+      }, 1500);
+
+    } catch (error) {
+      console.error('Error awarding points:', error);
+      toast.error('Failed to award points: ' + error.message);
+      setIsProcessing(false);
+    }
+  };
+
+  const handleFeedbackSubmit = async (feedbackData) => {
+    try {
+      setIsProcessing(true);
+      
+      // Save feedback for each awarded event
+      const batch = writeBatch(db);
+      
+      for (const event of awardedEvents) {
+        const feedbackRef = doc(collection(db, 'eventFeedback'));
+        batch.set(feedbackRef, {
+          eventId: event.id,
+          eventTitle: event.title,
+          userId: scannedUser.id,
+          userName: scannedUser.displayName || scannedUser.email,
+          rating: parseInt(feedbackData.rating),
+          comment: feedbackData.comment || '',
+          submittedAt: serverTimestamp(),
+          submissionMethod: 'admin_assisted'
+        });
+
+        // Update event average rating
+        const eventRef = doc(db, 'events', event.id);
+        batch.update(eventRef, {
+          totalRatings: increment(1),
+          ratingSum: increment(parseInt(feedbackData.rating)),
+          lastFeedback: serverTimestamp()
+        });
+      }
+
+      await batch.commit();
+      
+      toast.success('Feedback submitted successfully!');
+      
+      // Reset states
+      setShowFeedbackModal(false);
+      setScannedUser(null);
+      setAwardedEvents([]);
+      setSelectedEventsForScanning(new Set());
+      setIsProcessing(false);
+      
+    } catch (error) {
+      console.error('Error submitting feedback:', error);
+      toast.error('Failed to submit feedback: ' + error.message);
+      setIsProcessing(false);
     }
   };
 
@@ -167,6 +448,16 @@ export default function Events() {
       newSelected.add(eventId);
     }
     setSelectedEvents(newSelected);
+  };
+
+  const toggleEventForScanning = (eventId) => {
+    const newSelected = new Set(selectedEventsForScanning);
+    if (newSelected.has(eventId)) {
+      newSelected.delete(eventId);
+    } else {
+      newSelected.add(eventId);
+    }
+    setSelectedEventsForScanning(newSelected);
   };
 
   const selectAllEvents = () => {
@@ -242,13 +533,16 @@ export default function Events() {
         action: bulkAction,
         eventIds: selectedEventIds,
         adminId: user.uid,
+        adminName: user.displayName || user.email,
         timestamp: serverTimestamp(),
         count: selectedEvents.size
       });
 
+      toast.success(`Bulk action completed successfully`);
+
     } catch (error) {
       console.error('Error performing bulk action:', error);
-      alert('Failed to perform bulk action: ' + error.message);
+      toast.error('Failed to perform bulk action: ' + error.message);
     }
     
     setIsProcessing(false);
@@ -256,7 +550,7 @@ export default function Events() {
 
   const handleCancelEvents = async () => {
     if (!cancelReason.trim()) {
-      alert('Please provide a reason for cancellation');
+      toast.error('Please provide a reason for cancellation');
       return;
     }
 
@@ -284,7 +578,7 @@ export default function Events() {
         title: 'Event Cancellation Notice',
         message: `Event(s) have been cancelled. Reason: ${cancelReason}`,
         type: 'event_cancellation',
-        targetUsers: 'participants', // Will be expanded by cloud function
+        targetUsers: 'participants',
         eventIds: selectedEventIds,
         priority: 'high',
         status: 'sent',
@@ -298,6 +592,7 @@ export default function Events() {
         eventIds: selectedEventIds,
         reason: cancelReason,
         adminId: user.uid,
+        adminName: user.displayName || user.email,
         timestamp: serverTimestamp(),
         count: selectedEvents.size
       });
@@ -306,11 +601,11 @@ export default function Events() {
       setBulkAction('');
       setShowCancelModal(false);
       setCancelReason('');
-      alert(`Successfully cancelled ${selectedEventIds.length} event(s) and notified participants.`);
+      toast.success(`Successfully cancelled ${selectedEventIds.length} event(s) and notified participants.`);
 
     } catch (error) {
       console.error('Error cancelling events:', error);
-      alert('Failed to cancel events: ' + error.message);
+      toast.error('Failed to cancel events: ' + error.message);
     }
     
     setIsProcessing(false);
@@ -350,9 +645,11 @@ export default function Events() {
         });
       }
 
+      toast.success(`Event status updated to ${newStatus}`);
+
     } catch (error) {
       console.error('Error updating event status:', error);
-      alert('Failed to update event status: ' + error.message);
+      toast.error('Failed to update event status: ' + error.message);
     }
   };
 
@@ -360,7 +657,7 @@ export default function Events() {
     const csvContent = "data:text/csv;charset=utf-8," +
       "ID,Title,Category,Status,Date,Location,Participants,Max Participants,Organizer,Created\n" +
       filteredEvents.map(event => 
-        `"${event.id}","${event.title}","${event.category}","${event.status}","${event.date}","${event.location}","${event.participants || 0}","${event.maxParticipants || 0}","${event.organizer}","${new Date(event.createdAt?.toDate()).toLocaleDateString()}"`
+        `"${event.id}","${event.title || ''}","${event.category || ''}","${event.status || ''}","${event.date || ''}","${event.location || ''}","${event.participants || 0}","${event.maxParticipants || 0}","${event.organizer || ''}","${event.createdAt?.toDate ? event.createdAt.toDate().toLocaleDateString() : ''}"`
       ).join('\n');
     
     const encodedUri = encodeURI(csvContent);
@@ -370,6 +667,7 @@ export default function Events() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    toast.success('Events exported successfully');
   };
 
   const duplicateEvent = async (event) => {
@@ -392,10 +690,10 @@ export default function Events() {
       delete duplicatedEvent.completedAt;
 
       await addDoc(collection(db, 'events'), duplicatedEvent);
-      alert('Event duplicated successfully!');
+      toast.success('Event duplicated successfully!');
     } catch (error) {
       console.error('Error duplicating event:', error);
-      alert('Failed to duplicate event: ' + error.message);
+      toast.error('Failed to duplicate event: ' + error.message);
     }
   };
 
@@ -411,21 +709,48 @@ export default function Events() {
         </div>
         <div className="flex space-x-3">
           <button
+            onClick={() => setShowQRTest(!showQRTest)}
+            className="flex items-center px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+          >
+            <QrCodeIcon className="h-4 w-4 mr-2" />
+            {showQRTest ? 'Hide' : 'Show'} QR Test
+          </button>
+          <button
+            onClick={handleStartQRScanning}
+            className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
+            disabled={completedEvents.length === 0 || isProcessing}
+          >
+            <QrCodeIcon className="h-4 w-4 mr-2" />
+            Scan QR & Award Points
+            {completedEvents.length > 0 && (
+              <span className="ml-2 bg-purple-500 text-xs px-2 py-0.5 rounded-full">
+                {completedEvents.length}
+              </span>
+            )}
+          </button>
+          <button
             onClick={exportEvents}
-            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
           >
             <DownloadIcon className="h-4 w-4 mr-2" />
             Export CSV
           </button>
           <button
             onClick={handleCreateEvent}
-            className="flex items-center px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
+            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
           >
             <PlusIcon className="h-4 w-4 mr-2" />
             Create Event
           </button>
         </div>
       </div>
+
+      {/* QR Test Generator */}
+      {showQRTest && (
+        <div className="mb-6">
+          <QRTestGenerator />
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-white p-6 rounded-lg shadow">
@@ -435,14 +760,14 @@ export default function Events() {
             <input
               type="text"
               placeholder="Search events..."
-              className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
           
           <select
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
           >
@@ -454,7 +779,7 @@ export default function Events() {
           </select>
           
           <select
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
           >
@@ -466,7 +791,7 @@ export default function Events() {
           </select>
           
           <select
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
           >
@@ -478,6 +803,8 @@ export default function Events() {
           
           <div className="text-sm text-gray-500 flex items-center">
             Total: {events.length} events
+            <br />
+            Completed: {completedEvents.length}
           </div>
         </div>
       </div>
@@ -560,9 +887,17 @@ export default function Events() {
                     <h3 className="text-lg font-semibold text-gray-900 line-clamp-2">
                       {event.title}
                     </h3>
-                    <span className={getStatusBadge(event.status)}>
-                      {event.status}
-                    </span>
+                    <div className="flex items-center space-x-2 mt-1">
+                      <span className={getStatusBadge(event.status)}>
+                        {event.status}
+                      </span>
+                      {event.status === 'completed' && (
+                        <div className="flex items-center text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">
+                          <AwardIcon className="h-3 w-3 mr-1" />
+                          {event.points || 0} pts
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
                 
@@ -713,12 +1048,69 @@ export default function Events() {
         ))}
       </div>
 
+      {/* No Events Message */}
+      {sortedEvents.length === 0 && (
+        <div className="text-center py-12">
+          <div className="text-gray-400 mb-4">
+            <CalendarIcon className="h-12 w-12 mx-auto" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No events found</h3>
+          <p className="text-gray-600 mb-6">
+            {searchTerm || statusFilter !== 'all' || categoryFilter !== 'all'
+              ? 'Try adjusting your filters or search terms.'
+              : 'Get started by creating your first event.'}
+          </p>
+          {!searchTerm && statusFilter === 'all' && categoryFilter === 'all' && (
+            <button
+              onClick={handleCreateEvent}
+              className="inline-flex items-center px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
+            >
+              <PlusIcon className="h-4 w-4 mr-2" />
+              Create Event
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Event Modal */}
       {showModal && (
         <EventModal
           event={selectedEvent}
           onSave={handleSaveEvent}
           onClose={() => setShowModal(false)}
+        />
+      )}
+
+      {/* QR Scanner Modal */}
+      {showQRScanner && (
+        <QRScannerModal
+          isOpen={showQRScanner}
+          onClose={() => {
+            setShowQRScanner(false);
+            setSelectedEventsForScanning(new Set());
+          }}
+          onScanSuccess={handleQRScanSuccess}
+          completedEvents={completedEvents}
+          selectedEvents={selectedEventsForScanning}
+          onToggleEvent={toggleEventForScanning}
+          isProcessing={isProcessing}
+        />
+      )}
+
+      {/* Feedback Modal */}
+      {showFeedbackModal && scannedUser && (
+        <FeedbackModal
+          isOpen={showFeedbackModal}
+          onClose={() => {
+            setShowFeedbackModal(false);
+            setScannedUser(null);
+            setAwardedEvents([]);
+            setSelectedEventsForScanning(new Set());
+          }}
+          onSubmit={handleFeedbackSubmit}
+          user={scannedUser}
+          events={awardedEvents}
+          isProcessing={isProcessing}
         />
       )}
 

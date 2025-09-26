@@ -1,58 +1,270 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  StyleSheet, 
-  TouchableOpacity, 
-  KeyboardAvoidingView, 
+import {
+  View,
+  Text,
+  TextInput,
+  StyleSheet,
+  TouchableOpacity,
+  KeyboardAvoidingView,
   Platform,
   ScrollView,
   Alert,
-  Image,
   ActivityIndicator,
   Dimensions,
 } from 'react-native';
+import { Image } from 'expo-image';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSpring } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system/legacy';
-import { getStorage, ref, uploadBytes, getDownloadURL, uploadString } from 'firebase/storage';
+import { getStorage } from 'firebase/storage';
 import supabase, { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config/supabaseClient';
 import { useUser } from '../contexts/UserContext';
 
 const { width } = Dimensions.get('window');
 
-const AVATAR_COLORS = [
-  '#3b82f6', '#10b981', '#f59e0b', '#ef4444', 
-  '#8b5cf6', '#06b6d4', '#f97316', '#ec4899',
-  '#6366f1', '#14b8a6', '#f59e0b', '#ef4444'
-];
+const GENDER_OPTIONS = ['Male', 'Female','Other'];
 
-const BORDER_STYLES = [
-  { id: 'none', name: 'None', width: 0, color: 'transparent' },
-  { id: 'thin', name: 'Thin', width: 2, color: '#ffffff' },
-  { id: 'medium', name: 'Medium', width: 4, color: '#ffffff' },
-  { id: 'thick', name: 'Thick', width: 6, color: '#ffffff' },
-  { id: 'accent', name: 'Accent', width: 3, color: '#3b82f6' },
-  { id: 'gold', name: 'Gold', width: 3, color: '#fbbf24' },
-  { id: 'gradient', name: 'Rainbow', width: 4, color: 'linear-gradient' },
-];
+// Avatar Dropdown Component
+const AvatarDropdown = ({ selectedAvatar, setSelectedAvatar, profilePic, setProfilePic, avatar, setAvatar, pickImage, uploading }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [avatarUrls, setAvatarUrls] = useState([]);
+  const dropdownHeight = useSharedValue(0);
+  const dropdownOpacity = useSharedValue(0);
 
-const GENDER_OPTIONS = ['Male', 'Female', 'Non-binary', 'Prefer not to say', 'Other'];
+  const avatarConfigs = [
+    { style: 'avataaars', seed: 'user1', name: 'Avatar 1' },
+    { style: 'avataaars', seed: 'user2', name: 'Avatar 2' },
+    { style: 'avataaars', seed: 'user3', name: 'Avatar 3' },
+    { style: 'personas', seed: 'person1', name: 'Persona 1' },
+    { style: 'personas', seed: 'person2', name: 'Persona 2' },
+    { style: 'personas', seed: 'person3', name: 'Persona 3' },
+    { style: 'micah', seed: 'profile1', name: 'Micah 1' },
+    { style: 'micah', seed: 'profile2', name: 'Micah 2' },
+    { style: 'adventurer', seed: 'hero1', name: 'Hero 1' },
+    { style: 'adventurer', seed: 'hero2', name: 'Hero 2' },
+    { style: 'adventurer-neutral', seed: 'neutral1', name: 'Neutral 1' },
+    { style: 'pixel-art', seed: 'pixel1', name: 'Pixel 1' },
+  ];
+
+  useEffect(() => {
+    const urls = avatarConfigs.map((config, index) => ({
+      id: index,
+      url: `https://api.dicebear.com/8.x/${config.style}/svg?seed=${config.seed}`,
+      style: config.style,
+      seed: config.seed,
+      name: config.name
+    }));
+    setAvatarUrls(urls);
+  }, []);
+
+  const toggleDropdown = () => {
+    const newIsOpen = !isOpen;
+    setIsOpen(newIsOpen);
+    
+    dropdownHeight.value = withSpring(newIsOpen ? 400 : 0, {
+      damping: 15,
+      stiffness: 200,
+    });
+    dropdownOpacity.value = withTiming(newIsOpen ? 1 : 0, {
+      duration: 200,
+    });
+  };
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    height: dropdownHeight.value,
+    opacity: dropdownOpacity.value,
+  }));
+
+  const renderCurrentAvatar = (size = 120) => {
+    const avatarStyle = {
+      width: size,
+      height: size,
+      borderRadius: size / 2,
+      backgroundColor: '#3b82f6',
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 3,
+      borderColor: '#e5e7eb',
+      position: 'relative',
+    };
+
+    // Priority: Custom uploaded photo > Selected DiceBear > Initials
+    if (profilePic) {
+      return (
+        <View style={avatarStyle}>
+          <Image source={{ uri: profilePic }} style={styles.avatarImage} />
+        </View>
+      );
+    } else if (selectedAvatar) {
+      return (
+        <View style={[avatarStyle, { backgroundColor: '#f3f4f6' }]}>
+          <Image 
+            source={{ uri: selectedAvatar.url }} 
+            style={styles.avatarImage}
+            resizeMode="cover"
+          />
+        </View>
+      );
+    } else {
+      return (
+        <View style={avatarStyle}>
+          <Text style={[styles.avatarText, { fontSize: size * 0.4 }]}>{avatar}</Text>
+        </View>
+      );
+    }
+  };
+
+  return (
+    <View style={styles.avatarDropdownContainer}>
+      <Text style={styles.sectionTitle}>Profile Avatar</Text>
+      
+      {/* Current Avatar Display */}
+      <View style={styles.currentAvatarSection}>
+        <TouchableOpacity 
+          style={styles.avatarButton}
+          onPress={toggleDropdown}
+          disabled={uploading}
+        >
+          {renderCurrentAvatar()}
+          <View style={styles.avatarOverlay}>
+            {uploading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Ionicons name="camera" size={20} color="#fff" />
+            )}
+          </View>
+          <View style={styles.dropdownIndicator}>
+            <Ionicons 
+              name={isOpen ? "chevron-up" : "chevron-down"} 
+              size={20} 
+              color="#6b7280" 
+            />
+          </View>
+        </TouchableOpacity>
+        
+        {/* Avatar initials input */}
+        <View style={styles.avatarInputSection}>
+          <Text style={styles.inputLabel}>Avatar Initials</Text>
+          <TextInput 
+            style={styles.avatarInput} 
+            placeholder="Enter initials" 
+            value={avatar} 
+            onChangeText={setAvatar}
+            maxLength={2}
+            placeholderTextColor="#9ca3af"
+          />
+        </View>
+      </View>
+
+      {/* Dropdown Content */}
+      <Animated.View style={[styles.dropdownContent, animatedStyle]}>
+        <ScrollView showsVerticalScrollIndicator={false}>
+          {/* Upload Options */}
+          <View style={styles.uploadSection}>
+            <Text style={styles.dropdownSectionTitle}>Upload Custom Photo</Text>
+            <View style={styles.uploadButtons}>
+              <TouchableOpacity 
+                style={[styles.uploadButton, styles.primaryButton]}
+                onPress={() => {
+                  pickImage('profile', 'library');
+                  setIsOpen(false);
+                }}
+                disabled={uploading}
+              >
+                <Ionicons name="images-outline" size={18} color="#fff" />
+                <Text style={styles.uploadButtonText}>Gallery</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.uploadButton, styles.secondaryButton]}
+                onPress={() => {
+                  pickImage('profile', 'camera');
+                  setIsOpen(false);
+                }}
+                disabled={uploading}
+              >
+                <Ionicons name="camera-outline" size={18} color="#3b82f6" />
+                <Text style={[styles.uploadButtonText, { color: '#3b82f6' }]}>Camera</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Avatar Options */}
+          <View style={styles.avatarOptionsSection}>
+            <Text style={styles.dropdownSectionTitle}>Choose Avatar Style</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.avatarGrid}>
+              <View style={styles.avatarGridInner}>
+                {avatarUrls.map((avatarOption) => (
+                  <TouchableOpacity
+                    key={avatarOption.id}
+                    onPress={() => {
+                      setSelectedAvatar(avatarOption);
+                      setProfilePic(null); // Clear uploaded photo when selecting DiceBear
+                      setIsOpen(false);
+                      Toast.show({
+                        type: 'success',
+                        text1: 'Avatar Selected',
+                        text2: avatarOption.name,
+                      });
+                    }}
+                    style={[
+                      styles.avatarOption,
+                      selectedAvatar?.id === avatarOption.id && styles.avatarOptionSelected
+                    ]}
+                    accessibilityLabel={`Select ${avatarOption.name}`}
+                  >
+                    <Image
+                      source={{ uri: avatarOption.url }}
+                      style={styles.avatarOptionImage}
+                      resizeMode="cover"
+                    />
+                    <Text style={styles.avatarOptionName} numberOfLines={1}>
+                      {avatarOption.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+            
+            {/* Clear Selection */}
+            {(selectedAvatar || profilePic) && (
+              <TouchableOpacity
+                onPress={() => {
+                  setSelectedAvatar(null);
+                  setProfilePic(null);
+                  Toast.show({
+                    type: 'info',
+                    text1: 'Avatar Cleared',
+                    text2: 'Using initials avatar',
+                  });
+                }}
+                style={styles.clearButton}
+              >
+                <Ionicons name="trash-outline" size={16} color="#ef4444" />
+                <Text style={styles.clearButtonText}>Clear Avatar</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </ScrollView>
+      </Animated.View>
+    </View>
+  );
+};
 
 const EditProfileScreen = () => {
   const navigation = useNavigation();
-  const { updateUserProfile, userData, user, getUserDisplayName, getUserInitials, loading: userLoading } = useUser();
+  const { updateUserProfile, userData, user, getUserInitials, loading: userLoading } = useUser();
   const storage = getStorage();
   
   // Basic Info
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [avatar, setAvatar] = useState('U');
-  const [selectedColor, setSelectedColor] = useState('#3b82f6');
-  const [selectedBorder, setSelectedBorder] = useState('none');
   const [bio, setBio] = useState('');
   const [phone, setPhone] = useState('');
   
@@ -70,6 +282,7 @@ const EditProfileScreen = () => {
   const [uploading, setUploading] = useState(false);
   const [profilePic, setProfilePic] = useState(userData?.profilePic || null);
   const [coverPhoto, setCoverPhoto] = useState(userData?.coverPhoto || null);
+  const [selectedAvatar, setSelectedAvatar] = useState(null);
   
   // UI States
   const [showGenderPicker, setShowGenderPicker] = useState(false);
@@ -78,13 +291,14 @@ const EditProfileScreen = () => {
   useEffect(() => {
     try {
       if (!userData && !user) return;
+
       const displayName = userData?.name || user?.displayName || (userData?.email || user?.email || '').split('@')[0] || '';
       setName(displayName || '');
       setEmail(userData?.email || user?.email || '');
+
       const initials = userData?.avatarInitials || (typeof getUserInitials === 'function' ? getUserInitials() : (displayName ? displayName.substring(0, 2).toUpperCase() : 'U'));
       setAvatar(initials || '');
-      setSelectedColor(userData?.avatarColor || '#3b82f6');
-      setSelectedBorder(userData?.avatarBorder || 'none');
+
       setBio(userData?.bio || '');
       setPhone(userData?.phone || '');
       setAddress(userData?.address || '');
@@ -96,11 +310,23 @@ const EditProfileScreen = () => {
       setOccupation(userData?.occupation || '');
       setProfilePic(userData?.profilePic || null);
       setCoverPhoto(userData?.coverPhoto || null);
+
+      // Set selected avatar if user has DiceBear data
+      if (userData?.dicebearStyle && userData?.dicebearSeed) {
+        setSelectedAvatar({
+          id: 999, // Custom ID for existing avatar
+          url: userData.profilePic,
+          style: userData.dicebearStyle,
+          seed: userData.dicebearSeed,
+          name: 'Current Avatar'
+        });
+      }
+
     } catch (e) {
-      // noop
+      console.error('Error loading user data:', e);
     }
   }, [userData, user]);
-
+  
   const validateForm = () => {
     if (!name.trim()) {
       Toast.show({ type: 'error', text1: 'Please enter your name' });
@@ -110,8 +336,8 @@ const EditProfileScreen = () => {
       Toast.show({ type: 'error', text1: 'Please enter your email' });
       return false;
     }
-    if (!avatar.trim()) {
-      Toast.show({ type: 'error', text1: 'Please enter your avatar initials' });
+    if (!selectedAvatar && !profilePic && !avatar.trim()) {
+      Toast.show({ type: 'error', text1: 'Please select an avatar or enter initials' });
       return false;
     }
     if (avatar.length > 2) {
@@ -120,8 +346,6 @@ const EditProfileScreen = () => {
     }
     return true;
   };
-
-  const validateMimeType = (mime) => ['image/jpeg', 'image/png', 'image/gif'].includes(String(mime || '').toLowerCase());
 
   const pickImage = async (type, source = 'library') => {
     try {
@@ -144,28 +368,24 @@ const EditProfileScreen = () => {
         setUploading(false);
         return;
       }
+
       const asset = result.assets[0];
-      const uri = asset.uri;
+      let uri = asset.uri;
       const maxSize = type === 'profile' ? 5 * 1024 * 1024 : 10 * 1024 * 1024;
 
-      const inferMimeFromUri = (u) => {
-        const lower = String(u || '').toLowerCase();
-        if (lower.endsWith('.png')) return 'image/png';
-        if (lower.endsWith('.gif')) return 'image/gif';
-        return 'image/jpeg';
-      };
-      const inferredType = asset.mimeType || inferMimeFromUri(uri);
+      // Resize and compress the image
+      const manipResult = await ImageManipulator.manipulateAsync(
+        uri,
+        [{ resize: { width: type === 'profile' ? 400 : 1024 } }],
+        { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
+      );
 
-      if (!validateMimeType(inferredType)) {
-        Toast.show({ type: 'error', text1: 'Unsupported file type', text2: 'Use JPG, PNG, or GIF' });
-        setUploading(false);
-        return;
-      }
+      uri = manipResult.uri;
 
-      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-      const approxBytes = Math.floor(base64.length * 0.75);
-      if (approxBytes > maxSize) {
-        Toast.show({ type: 'error', text1: 'File too large' });
+      // Check file size
+      const fileInfo = await FileSystem.getInfoAsync(uri);
+      if (fileInfo.exists && fileInfo.size > maxSize) {
+        Toast.show({ type: 'error', text1: 'File too large', text2: `Image must be smaller than ${maxSize / 1024 / 1024}MB.` });
         setUploading(false);
         return;
       }
@@ -180,7 +400,7 @@ const EditProfileScreen = () => {
       let url = null;
       if (supabase) {
         try {
-          const ext = inferredType === 'image/png' ? 'png' : inferredType === 'image/gif' ? 'gif' : 'jpg';
+          const ext = 'jpg';
           const bucket = type === 'profile' ? 'profile' : 'cover';
           const filePath = `${userId}/${Date.now()}.${ext}`;
           
@@ -215,7 +435,14 @@ const EditProfileScreen = () => {
       } else {
         throw new Error('Supabase client not initialized');
       }
-      if (type === 'profile') setProfilePic(url); else setCoverPhoto(url);
+
+      if (type === 'profile') {
+        setProfilePic(url);
+        setSelectedAvatar(null); // Clear DiceBear selection when uploading custom photo
+      } else {
+        setCoverPhoto(url);
+      }
+      
       Toast.show({ type: 'success', text1: `${type === 'profile' ? 'Profile photo' : 'Cover photo'} uploaded` });
     } catch (e) {
       console.error('Image picker error:', e);
@@ -228,52 +455,14 @@ const EditProfileScreen = () => {
     }
   };
 
-  const renderAvatarWithBorder = (size = 100) => {
-    const borderStyle = BORDER_STYLES.find(b => b.id === selectedBorder) || BORDER_STYLES[0];
-    
-    const avatarStyle = {
-      width: size,
-      height: size,
-      borderRadius: size / 2,
-      backgroundColor: selectedColor,
-      justifyContent: 'center',
-      alignItems: 'center',
-      borderWidth: borderStyle.width,
-      borderColor: borderStyle.id === 'gradient' ? 'transparent' : borderStyle.color,
-    };
-
-    if (borderStyle.id === 'gradient') {
-      return (
-        <View style={[avatarStyle, styles.gradientBorder]}>
-          <View style={[avatarStyle, { borderWidth: 0, width: size - 8, height: size - 8 }]}>
-            {profilePic ? (
-              <Image source={{uri: profilePic}} style={styles.avatarImage} />
-            ) : (
-              <Text style={[styles.avatarText, { fontSize: size * 0.4 }]}>{avatar}</Text>
-            )}
-          </View>
-        </View>
-      );
-    }
-
-    return (
-      <View style={avatarStyle}>
-        {profilePic ? (
-          <Image source={{uri: profilePic}} style={styles.avatarImage} />
-        ) : (
-          <Text style={[styles.avatarText, { fontSize: size * 0.4 }]}>{avatar}</Text>
-        )}
-      </View>
-    );
-  };
-
   const handleSave = async () => {
     if (!validateForm()) return;
-    
+  
     setLoading(true);
-    const updates = {
+    const profileData = {
       name,
       email,
+      avatarInitials: avatar,
       bio,
       phone,
       address,
@@ -283,15 +472,15 @@ const EditProfileScreen = () => {
       birthDate,
       website,
       occupation,
-      avatarInitials: avatar,
-      avatarColor: selectedColor,
-      avatarBorder: selectedBorder,
-      profilePic: profilePic,
-      coverPhoto: coverPhoto
+      profilePic: profilePic || (selectedAvatar ? selectedAvatar.url : null),
+      dicebearStyle: selectedAvatar ? selectedAvatar.style : null,
+      dicebearSeed: selectedAvatar ? selectedAvatar.seed : null,
+      coverPhoto,
     };
-    const result = await updateUserProfile(updates);
+  
+    const result = await updateUserProfile(profileData);
     setLoading(false);
-    
+  
     if (result.success) {
       Toast.show({ 
         type: 'success', 
@@ -310,7 +499,7 @@ const EditProfileScreen = () => {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      {/* Modern Header */}
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="chevron-back" size={28} color="#1f2937" />
@@ -363,90 +552,17 @@ const EditProfileScreen = () => {
           </View>
         </View>
 
-        {/* Profile Picture & Avatar Section */}
-        <View style={styles.profileSection}>
-          <Text style={styles.sectionTitle}>Profile Picture & Avatar</Text>
-          
-          <View style={styles.avatarContainer}>
-            <TouchableOpacity onPress={() => pickImage('profile', 'library')} style={styles.profilePicContainer}>
-              {renderAvatarWithBorder(120)}
-              <View style={styles.profilePicOverlay}>
-                <Ionicons name="camera" size={20} color="#fff" />
-              </View>
-              {uploading && (
-                <View style={styles.uploadOverlay}>
-                  <ActivityIndicator color="#fff" />
-                </View>
-              )}
-            </TouchableOpacity>
-            
-            <View style={styles.avatarCustomization}>
-              <TextInput 
-                style={styles.avatarInput} 
-                placeholder="Avatar initials" 
-                value={avatar} 
-                onChangeText={setAvatar}
-                maxLength={2}
-                placeholderTextColor="#9ca3af"
-              />
-              
-              {/* Color Selection */}
-              <Text style={styles.customizationLabel}>Avatar Color</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.colorScrollView}>
-                {AVATAR_COLORS.map((color, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={[
-                      styles.colorOption, 
-                      { backgroundColor: color },
-                      selectedColor === color && styles.colorOptionSelected
-                    ]}
-                    onPress={() => setSelectedColor(color)}
-                  />
-                ))}
-              </ScrollView>
-              
-              {/* Border Selection */}
-              <Text style={styles.customizationLabel}>Border Style</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.borderScrollView}>
-                {BORDER_STYLES.map((border) => (
-                  <TouchableOpacity
-                    key={border.id}
-                    style={[
-                      styles.borderOption,
-                      selectedBorder === border.id && styles.borderOptionSelected
-                    ]}
-                    onPress={() => setSelectedBorder(border.id)}
-                  >
-                    <View style={[
-                      styles.borderPreview,
-                      { 
-                        backgroundColor: selectedColor,
-                        borderWidth: border.width,
-                        borderColor: border.id === 'gradient' ? 'transparent' : border.color,
-                      },
-                      border.id === 'gradient' && styles.gradientBorderPreview
-                    ]}>
-                      <Text style={styles.borderPreviewText}>A</Text>
-                    </View>
-                    <Text style={styles.borderOptionLabel}>{border.name}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          </View>
-          
-          <View style={styles.photoActions}>
-            <TouchableOpacity onPress={() => pickImage('profile', 'library')} style={[styles.actionButton, styles.primaryAction]}>
-              <Ionicons name="images-outline" size={18} color="#fff" />
-              <Text style={styles.actionButtonText}>Gallery</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => pickImage('profile', 'camera')} style={[styles.actionButton, styles.secondaryAction]}>
-              <Ionicons name="camera-outline" size={18} color="#3b82f6" />
-              <Text style={[styles.actionButtonText, { color: '#3b82f6' }]}>Camera</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        {/* Avatar Dropdown Section */}
+        <AvatarDropdown
+          selectedAvatar={selectedAvatar}
+          setSelectedAvatar={setSelectedAvatar}
+          profilePic={profilePic}
+          setProfilePic={setProfilePic}
+          avatar={avatar}
+          setAvatar={setAvatar}
+          pickImage={pickImage}
+          uploading={uploading}
+        />
 
         {/* Basic Information */}
         <View style={styles.section}>
@@ -454,7 +570,7 @@ const EditProfileScreen = () => {
           <View style={styles.inputGroup}>
             <Ionicons name="person-outline" size={20} color="#6b7280" style={styles.inputIcon} />
             <TextInput 
-              style={styles.modernInput} 
+              style={styles.modernInput}
               placeholder="Full Name" 
               value={name} 
               onChangeText={setName}
@@ -693,9 +809,6 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 30,
   },
-  profileSection: {
-    marginBottom: 30,
-  },
   section: {
     marginBottom: 30,
   },
@@ -705,6 +818,179 @@ const styles = StyleSheet.create({
     color: '#1f2937',
     marginBottom: 16,
   },
+  
+  // Avatar Dropdown Styles
+  avatarDropdownContainer: {
+    marginBottom: 30,
+  },
+  currentAvatarSection: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 8,
+  },
+  avatarButton: {
+    position: 'relative',
+    marginRight: 20,
+  },
+  avatarOverlay: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 15,
+    padding: 6,
+  },
+  dropdownIndicator: {
+    position: 'absolute',
+    bottom: -5,
+    right: -5,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  avatarInputSection: {
+    flex: 1,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  avatarInput: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    textAlign: 'center',
+    fontWeight: '600',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  dropdownContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 6,
+    overflow: 'hidden',
+  },
+  uploadSection: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  dropdownSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1f2937',
+    marginBottom: 12,
+  },
+  uploadButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  uploadButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+  },
+  primaryButton: {
+    backgroundColor: '#3b82f6',
+  },
+  secondaryButton: {
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#3b82f6',
+  },
+  uploadButtonText: {
+    marginLeft: 8,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  avatarOptionsSection: {
+    padding: 16,
+  },
+  avatarGrid: {
+    paddingBottom: 16,
+  },
+  avatarGridInner: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  avatarOption: {
+    width: (width - 80) / 4,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    padding: 8,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  avatarOptionSelected: {
+    borderColor: '#3b82f6',
+    backgroundColor: '#dbeafe',
+    shadowColor: '#3b82f6',
+    shadowOpacity: 0.2,
+    elevation: 4,
+  },
+  avatarOptionImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginBottom: 4,
+  },
+  avatarOptionName: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: '#6b7280',
+    textAlign: 'center',
+  },
+  clearButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    backgroundColor: '#fef2f2',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+  },
+  clearButtonText: {
+    marginLeft: 8,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#ef4444',
+  },
+  
+  // Cover Photo Styles
   coverPhotoContainer: {
     position: 'relative',
     height: 180,
@@ -735,94 +1021,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 8,
   },
-  avatarContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 20,
-  },
-  profilePicContainer: {
-    position: 'relative',
-    marginRight: 20,
-  },
-  profilePicOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 15,
-    padding: 6,
-  },
-  avatarCustomization: {
-    flex: 1,
-  },
-  avatarInput: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    marginBottom: 16,
-    textAlign: 'center',
-    fontWeight: '600',
-  },
-  customizationLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  colorScrollView: {
-    marginBottom: 16,
-  },
-  colorOption: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginRight: 12,
-    borderWidth: 3,
-    borderColor: 'transparent',
-  },
-  colorOptionSelected: {
-    borderColor: '#1f2937',
-  },
-  borderScrollView: {
-    marginBottom: 16,
-  },
-  borderOption: {
-    alignItems: 'center',
-    marginRight: 16,
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: '#f9fafb',
-  },
-  borderOptionSelected: {
-    backgroundColor: '#dbeafe',
-    borderWidth: 2,
-    borderColor: '#3b82f6',
-  },
-  borderPreview: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  gradientBorderPreview: {
-    borderWidth: 2,
-    borderColor: '#ef4444',
-  },
-  borderPreviewText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  borderOptionLabel: {
-    fontSize: 12,
-    color: '#6b7280',
-    textAlign: 'center',
-  },
   photoActions: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -851,6 +1049,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
+  
+  // Form Input Styles
   inputGroup: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -862,10 +1062,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e5e7eb',
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
@@ -901,6 +1098,8 @@ const styles = StyleSheet.create({
     marginTop: -8,
     marginBottom: 8,
   },
+  
+  // Gender Picker Styles
   pickerContainer: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -909,10 +1108,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e5e7eb',
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
@@ -937,6 +1133,8 @@ const styles = StyleSheet.create({
     color: '#3b82f6',
     fontWeight: '600',
   },
+  
+  // Avatar Image Styles
   avatarImage: {
     width: '100%',
     height: '100%',
@@ -946,18 +1144,21 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#fff',
   },
-  gradientBorder: {
-    padding: 4,
-    borderRadius: 64,
-    background: 'linear-gradient(45deg, #ef4444, #f97316, #f59e0b, #10b981, #06b6d4, #3b82f6, #8b5cf6, #ec4899)',
-  },
+  
+  // Upload Overlay
   uploadOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 12,
   },
+  
+  // Save Button
   saveButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -967,10 +1168,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     marginTop: 20,
     shadowColor: '#10b981',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 6,
@@ -987,4 +1185,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default EditProfileScreen;
+  export default EditProfileScreen;

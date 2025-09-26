@@ -8,19 +8,20 @@ import {
   Dimensions,
   ScrollView,
 } from 'react-native';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
   withSpring,
-  withDelay,
-  withSequence,
   interpolate,
   Extrapolate,
+  runOnJS,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import onboardingService from '../services/onboardingService';
+import * as Haptics from 'expo-haptics';
 
 const { width, height } = Dimensions.get('window');
 
@@ -103,166 +104,147 @@ const onboardingData = [
 ];
 
 const OnboardingScreen = ({ navigation }) => {
-  const [currentScreen, setCurrentScreen] = useState(0);
-  
-  // Animation values
-  const logoScale = useSharedValue(0);
-  const contentOpacity = useSharedValue(0);
-  const featuresOpacity = useSharedValue(0);
-
-  useEffect(() => {
-    animateScreenEntry();
-  }, [currentScreen]);
-
-  const animateScreenEntry = () => {
-    // Reset and animate logo
-    logoScale.value = 0;
-    contentOpacity.value = 0;
-    featuresOpacity.value = 0;
-
-    logoScale.value = withDelay(200, withSpring(1, { damping: 8, stiffness: 100 }));
-    contentOpacity.value = withDelay(400, withTiming(1, { duration: 800 }));
-    featuresOpacity.value = withDelay(600, withTiming(1, { duration: 800 }));
-  };
-
-  const animatedLogoStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: logoScale.value }],
-  }));
-
-  const animatedContentStyle = useAnimatedStyle(() => ({
-    opacity: contentOpacity.value,
-    transform: [{ 
-      translateY: interpolate(
-        contentOpacity.value, 
-        [0, 1], 
-        [30, 0], 
-        Extrapolate.CLAMP
-      ) 
-    }],
-  }));
-
-  const animatedFeaturesStyle = useAnimatedStyle(() => ({
-    opacity: featuresOpacity.value,
-    transform: [{ 
-      translateY: interpolate(
-        featuresOpacity.value, 
-        [0, 1], 
-        [50, 0], 
-        Extrapolate.CLAMP
-      ) 
-    }],
-  }));
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const translateX = useSharedValue(0);
 
   const handleNext = () => {
-    if (currentScreen < onboardingData.length - 1) {
-      setCurrentScreen(prev => prev + 1);
+    if (currentIndex < onboardingData.length - 1) {
+      setCurrentIndex(prev => prev + 1);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     } else {
       handleGetStarted();
     }
   };
 
+  const handleBack = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex(prev => prev - 1);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
+
+  useEffect(() => {
+    translateX.value = withSpring(-currentIndex * width, { damping: 15, stiffness: 100 });
+  }, [currentIndex]);
+
+  const panGesture = Gesture.Pan()
+    .onFinalize((event) => {
+      if (event.translationX < -width / 4) {
+        runOnJS(handleNext)();
+      } else if (event.translationX > width / 4) {
+        runOnJS(handleBack)();
+      }
+    });
+
+  const animatedContainerStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateX: translateX.value }],
+    };
+  });
+
   const handleSkip = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     handleGetStarted();
   };
 
   const handleGetStarted = async () => {
     // Mark onboarding as completed
     await onboardingService.setOnboardingCompleted();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     navigation.replace('Login');
   };
 
-  const currentData = onboardingData[currentScreen];
+  const currentData = onboardingData[currentIndex];
 
   return (
-    <SafeAreaView style={styles.container}>
-      <LinearGradient
-        colors={currentData.color}
-        style={styles.gradient}
-      >
-        {/* Skip Button */}
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
-            <Text style={styles.skipText}>Skip</Text>
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView 
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Animated Logo */}
-          <Animated.View style={[styles.logoContainer, animatedLogoStyle]}>
-            <View style={styles.logo}>
-              <Ionicons name={currentData.icon} size={50} color="#fff" />
-            </View>
-          </Animated.View>
-
-          {/* Main Content */}
-          <Animated.View style={[styles.mainContent, animatedContentStyle]}>
-            <Text style={styles.title}>{currentData.title}</Text>
-            <Text style={styles.subtitle}>{currentData.subtitle}</Text>
-            <Text style={styles.description}>{currentData.description}</Text>
-          </Animated.View>
-
-          {/* Feature Cards */}
-          <Animated.View style={[styles.featuresContainer, animatedFeaturesStyle]}>
-            {currentData.features.map((feature, index) => (
-              <View key={index} style={styles.featureCard}>
-                <View style={styles.featureIcon}>
-                  <Ionicons name={feature.icon} size={24} color={currentData.color[0]} />
-                </View>
-                <View style={styles.featureContent}>
-                  <Text style={styles.featureTitle}>{feature.title}</Text>
-                  <Text style={styles.featureDescription}>{feature.description}</Text>
-                </View>
-              </View>
-            ))}
-          </Animated.View>
-        </ScrollView>
-
-        {/* Bottom Navigation */}
-        <View style={styles.bottomContainer}>
-          {/* Page Indicators */}
-          <View style={styles.pageIndicators}>
-            {onboardingData.map((_, index) => (
-              <View
-                key={index}
-                style={[
-                  styles.indicator,
-                  index === currentScreen && styles.activeIndicator
-                ]}
-              />
-            ))}
-          </View>
-
-          {/* Navigation Buttons */}
-          <View style={styles.navigationButtons}>
-            {currentScreen > 0 && (
-              <TouchableOpacity 
-                style={styles.backButton} 
-                onPress={() => setCurrentScreen(prev => prev - 1)}
-              >
-                <Ionicons name="arrow-back" size={20} color="#fff" />
-                <Text style={styles.backText}>Back</Text>
-              </TouchableOpacity>
-            )}
-            
-            <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
-              <Text style={styles.nextText}>
-                {currentScreen === onboardingData.length - 1 ? 'Get Started' : 'Next'}
-              </Text>
-              <Ionicons name="arrow-forward" size={20} color="#fff" />
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaView style={styles.container}>
+        <LinearGradient colors={currentData.color} style={styles.gradient}>
+          <View style={styles.header}>
+            <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
+              <Text style={styles.skipText}>Skip</Text>
             </TouchableOpacity>
           </View>
-        </View>
-      </LinearGradient>
-    </SafeAreaView>
+          <GestureDetector gesture={panGesture}>
+            <Animated.View style={[styles.animatedContainer, animatedContainerStyle]}>
+              {onboardingData.map((item, index) => (
+                <Animated.View key={item.id} style={[styles.pageContainer]}>
+                  <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+                    <View style={styles.logoContainer}>
+                      <View style={styles.logo}>
+                        <Ionicons name={item.icon} size={50} color="#fff" />
+                      </View>
+                    </View>
+                    <View style={styles.mainContent}>
+                      <Text style={styles.title}>{item.title}</Text>
+                      <Text style={styles.subtitle}>{item.subtitle}</Text>
+                      <Text style={styles.description}>{item.description}</Text>
+                    </View>
+                    <View style={styles.featuresContainer}>
+                      {item.features.map((feature, fIndex) => (
+                        <View key={fIndex} style={styles.featureCard}>
+                          <View style={[styles.featureIcon, { backgroundColor: `${item.color[0]}20` }]}>
+                            <Ionicons name={feature.icon} size={24} color={item.color[0]} />
+                          </View>
+                          <View style={styles.featureContent}>
+                            <Text style={styles.featureTitle}>{feature.title}</Text>
+                            <Text style={styles.featureDescription}>{feature.description}</Text>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </Animated.View>
+              ))}
+            </Animated.View>
+          </GestureDetector>
+          <View style={styles.bottomContainer}>
+            <View style={styles.pageIndicators}>
+              {onboardingData.map((_, index) => {
+                const animatedIndicatorStyle = useAnimatedStyle(() => {
+                  const isActive = currentIndex === index;
+                  return {
+                    width: withSpring(isActive ? 24 : 8),
+                    backgroundColor: withTiming(isActive ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.3)'),
+                  };
+                });
+                return <Animated.View key={index} style={[styles.indicator, animatedIndicatorStyle]} />;
+              })}
+            </View>
+            <View style={styles.navigationButtons}>
+              {currentIndex > 0 && (
+                <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+                  <Ionicons name="arrow-back" size={20} color="#fff" />
+                  <Text style={styles.backText}>Back</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
+                <Text style={styles.nextText}>
+                  {currentIndex === onboardingData.length - 1 ? 'Get Started' : 'Next'}
+                </Text>
+                <Ionicons name="arrow-forward" size={20} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </LinearGradient>
+      </SafeAreaView>
+    </GestureHandlerRootView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  animatedContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    width: width * onboardingData.length,
+  },
+  pageContainer: {
+    width: width,
+    height: '100%',
+    alignItems: 'center',
   },
   gradient: {
     flex: 1,
@@ -389,7 +371,7 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    marginHorizontal: 4,
+    marginHorizontal: 3,
   },
   activeIndicator: {
     backgroundColor: 'rgba(255, 255, 255, 0.9)',
@@ -399,7 +381,7 @@ const styles = StyleSheet.create({
   },
   navigationButtons: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     alignItems: 'center',
   },
   backButton: {
@@ -409,6 +391,7 @@ const styles = StyleSheet.create({
     borderRadius: 25,
     paddingVertical: 12,
     paddingHorizontal: 20,
+    marginRight: 'auto',
   },
   backText: {
     color: '#fff',

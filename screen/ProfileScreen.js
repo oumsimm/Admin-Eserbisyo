@@ -5,33 +5,43 @@ import {
   View,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Alert,
-  Modal,
   Dimensions,
   ActivityIndicator,
-  Image,
   Platform,
   StatusBar,
   FlatList,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
+import Modal from 'react-native-modal';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import Toast from 'react-native-toast-message';
+import SettingsModal from '../screen/SettingsModal';
 import QRCodeDisplay from '../components/QRCodeDisplay';
 import authService from '../services/authService';
 import { useUser } from '../contexts/UserContext';
 import onboardingService from '../services/onboardingService';
 
 const { width } = Dimensions.get('window');
-
 const headerTopPadding = (Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0) + 40;
 
 const ProfileScreen = () => {
   const navigation = useNavigation();
-  const { userData, getUserDisplayName, getUserInitials, signOut: userSignOut, updateUserProfile, loading, error, badges } = useUser();
+  const { 
+    userData, 
+    getUserDisplayName, 
+    getUserInitials, 
+    signOut: userSignOut, 
+    updateUserProfile, 
+    loading, 
+    error, 
+    badges 
+  } = useUser();
 
+  // Modal states
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showAchievementsModal, setShowAchievementsModal] = useState(false);
@@ -40,7 +50,7 @@ const ProfileScreen = () => {
   const [showBadgeModal, setShowBadgeModal] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState(null);
 
-  // Fallback badges if context badges haven't populated yet
+  // Fallback badges
   const fallbackBadges = useMemo(() => {
     const pts = Number(userData?.points ?? userData?.total_points ?? 0) || 0;
     const defs = [
@@ -190,6 +200,46 @@ const ProfileScreen = () => {
     setShowSettingsModal(true);
   };
 
+  const handleSettingsChange = (settingKey, value) => {
+    switch (settingKey) {
+      case 'darkMode':
+        console.log('Dark mode toggled:', value);
+        Toast.show({
+          type: 'info',
+          text1: value ? 'Dark mode enabled' : 'Dark mode disabled',
+        });
+        break;
+      
+      case 'language':
+        console.log('Language changed to:', value);
+        Toast.show({
+          type: 'info',
+          text1: 'Language updated',
+          text2: 'Restart the app to see changes',
+        });
+        break;
+        
+      case 'profileVisibility':
+        updateUserProfile({ profileVisibility: value });
+        break;
+        
+      default:
+        console.log('Setting changed:', settingKey, value);
+    }
+  };
+
+  const handleAccountDeleted = () => {
+    Toast.show({
+      type: 'success',
+      text1: 'Account Deleted',
+      text2: 'We\'re sorry to see you go',
+    });
+    
+    setTimeout(() => {
+      navigation.replace('Login');
+    }, 2000);
+  };
+
   const handleHelpSupport = () => {
     Alert.alert(
       'Help & Support',
@@ -248,6 +298,22 @@ const ProfileScreen = () => {
     setShowQRModal(true);
   };
 
+  const handleQRScanned = (userInfo) => {
+    Alert.alert(
+      'User Found',
+      `Name: ${userInfo.name}\nUser ID: ${userInfo.userId}\nMobile: ${userInfo.mobile || 'Not provided'}`,
+      [
+        { text: 'OK' },
+        {
+          text: 'View Profile',
+          onPress: () => {
+            console.log('Navigate to user profile:', userInfo);
+          }
+        }
+      ]
+    );
+  };
+
   const accountItems = [
     {
       id: 1,
@@ -266,23 +332,23 @@ const ProfileScreen = () => {
       onPress: handleShowQRCode,
     },
     {
-      id: 3,
+      id: 4,
       title: 'My Events',
       subtitle: 'View your event history',
       icon: 'calendar-outline',
-      color: '#10b981',
+      color: '#f59e0b',
       onPress: () => navigation.navigate('Programs'),
     },
     {
-      id: 4,
+      id: 5,
       title: 'Badges',
       subtitle: 'See your badges and progress',
       icon: 'trophy-outline',
-      color: '#f59e0b',
+      color: '#ef4444',
       onPress: handleViewAchievements,
     },
   ];
-
+  
   const appItems = [
     {
       id: 0,
@@ -294,8 +360,8 @@ const ProfileScreen = () => {
     },
     {
       id: 1,
-      title: 'Settings',
-      subtitle: 'Preferences and privacy',
+      title: 'Settings & Privacy',
+      subtitle: 'Preferences, privacy, and security',
       icon: 'settings-outline',
       color: '#6b7280',
       onPress: handleSettings,
@@ -356,7 +422,6 @@ const ProfileScreen = () => {
       const meta = userBadgeMetaByTitle.get(b.title);
       return { ...b, unlockedAt: meta?.unlockedAt || null };
     });
-    // Sort: unlocked first by threshold ascending, then locked by threshold ascending
     return enriched.sort((a, b) => {
       if (a.unlocked && !b.unlocked) return -1;
       if (!a.unlocked && b.unlocked) return 1;
@@ -376,17 +441,15 @@ const ProfileScreen = () => {
     }
   };
 
-  // Horizontal carousel layout calculations
   const VISIBLE_BADGE_COUNT = 4;
   const BADGE_SPACING = 10;
-  const SECTION_H_PADDING = 20; // matches styles.section horizontal padding
+  const SECTION_H_PADDING = 20;
   const containerWidth = width - SECTION_H_PADDING * 2;
   const badgeCardWidth = Math.floor((containerWidth - BADGE_SPACING * (VISIBLE_BADGE_COUNT - 1)) / VISIBLE_BADGE_COUNT);
   const pageWidth = badgeCardWidth * VISIBLE_BADGE_COUNT + BADGE_SPACING * (VISIBLE_BADGE_COUNT - 1);
   const [badgePage, setBadgePage] = useState(0);
   const totalBadgePages = Math.max(1, Math.ceil(formattedBadges.length / VISIBLE_BADGE_COUNT));
 
-  // Show loading state while user data is being fetched
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -398,7 +461,6 @@ const ProfileScreen = () => {
     );
   }
 
-  // Show error state if there's an error or no user data
   if (error || !userData) {
     return (
       <SafeAreaView style={styles.container}>
@@ -422,7 +484,6 @@ const ProfileScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Modern Profile Header */}
         <View style={styles.headerSection}>
           <LinearGradient
             colors={['#667eea', '#764ba2']}
@@ -432,7 +493,11 @@ const ProfileScreen = () => {
             <View style={styles.headerContent}>
               <View style={styles.profileRow}>
                 <View style={[styles.avatarContainer, {backgroundColor: userData.avatarColor || '#3b82f6'}]}>
-                  {userData.profilePic ? <Image source={{uri: userData.profilePic}} style={styles.avatarImage} /> : <Text style={styles.avatarText}>{getUserInitials()}</Text>}
+                  {userData.profilePic ? ( // This includes both uploaded and DiceBear avatars
+                    <Image source={{ uri: userData.profilePic }} style={styles.avatarImage} contentFit="cover" />
+                  ) : (
+                    <Text style={styles.avatarText}>{getUserInitials()}</Text>
+                  )}
                 </View>
                 <View style={styles.profileInfo}>
                   <Text style={styles.profileName}>{getUserDisplayName()}</Text>
@@ -458,7 +523,6 @@ const ProfileScreen = () => {
           </LinearGradient>
         </View>
 
-        {/* Your Progress (moved from Dashboard) */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>🏆 Your Progress</Text>
           <View style={styles.progressCard}>
@@ -477,7 +541,6 @@ const ProfileScreen = () => {
             </View>
             <Text style={styles.progressText}>{((userData?.points || 0) % 100)}% to Level {(userData?.level || 1) + 1}</Text>
           </View>
-          {/* Quick stats below progress */}
           <View style={[styles.statsGrid, { marginTop: 12 }]}>
             <View style={styles.statCard}>
               <View style={[styles.statIcon, { backgroundColor: '#fef3c7' }]}>
@@ -503,7 +566,6 @@ const ProfileScreen = () => {
           </View>
         </View>
 
-        {/* Badges Carousel */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>🎖️ Your Badges</Text>
           <View style={styles.badgeCarouselCard}>
@@ -554,7 +616,6 @@ const ProfileScreen = () => {
                 );
               })}
             </ScrollView>
-            {/* Pagination dots */}
             {totalBadgePages > 1 && (
               <View style={styles.badgeDotsRow}>
                 {Array.from({ length: totalBadgePages }).map((_, i) => (
@@ -569,7 +630,6 @@ const ProfileScreen = () => {
           </View>
         </View>
 
-        {/* Account Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>👤 My Account</Text>
           <View style={styles.menuCard}>
@@ -597,7 +657,6 @@ const ProfileScreen = () => {
           </View>
         </View>
 
-        {/* App & Support Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>⚙️ App & Support</Text>
           <View style={styles.menuCard}>
@@ -625,7 +684,6 @@ const ProfileScreen = () => {
           </View>
         </View>
 
-        {/* App Info */}
         <View style={styles.appInfoSection}>
           <Text style={styles.appVersion}>E-SERBISYO v1.0.0</Text>
           <Text style={styles.appMission}>Connecting communities, one service at a time</Text>
@@ -633,15 +691,25 @@ const ProfileScreen = () => {
         </View>
       </ScrollView>
 
-      {/* Logout Confirmation Modal */}
+      <SettingsModal
+        isVisible={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        userData={userData}
+        onSettingsChange={handleSettingsChange}
+        onAccountDeleted={handleAccountDeleted}
+      />
+
       <Modal
-        visible={showLogoutModal}
-        transparent={true}
-        animationType="fade"
+        isVisible={showLogoutModal}
+        onBackdropPress={() => setShowLogoutModal(false)}
+        onBackButtonPress={() => setShowLogoutModal(false)}
+        animationIn="fadeIn"
+        animationOut="fadeOut"
+        backdropOpacity={0.5}
         onRequestClose={() => setShowLogoutModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+        <View style={styles.modalContainerCentered}>
+          <View style={styles.logoutModalContent}>
             <View style={styles.modalHeader}>
               <Ionicons name="log-out-outline" size={32} color="#ef4444" />
               <Text style={styles.modalTitle}>Logout</Text>
@@ -667,15 +735,16 @@ const ProfileScreen = () => {
         </View>
       </Modal>
 
-      {/* FAQ Modal */}
       <Modal
-        visible={showFAQModal}
-        transparent={true}
-        animationType="slide"
+        isVisible={showFAQModal}
+        onBackdropPress={() => setShowFAQModal(false)}
+        onBackButtonPress={() => setShowFAQModal(false)}
+        style={styles.bottomSheetModal}
+        useNativeDriver
         onRequestClose={() => setShowFAQModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.faqModal}>
+        <View style={styles.bottomSheetContainer}>
+          <View style={styles.faqModalContent}>
             <View style={styles.faqHeader}>
               <Text style={styles.faqTitle}>❓ Frequently Asked Questions</Text>
               <TouchableOpacity onPress={() => setShowFAQModal(false)}>
@@ -683,18 +752,22 @@ const ProfileScreen = () => {
               </TouchableOpacity>
             </View>
             
-            <ScrollView style={styles.faqContent} showsVerticalScrollIndicator={false}>
-              {faqData.map((category, categoryIndex) => (
-                <View key={categoryIndex} style={styles.faqCategory}>
-                  <Text style={styles.faqCategoryTitle}>{category.category}</Text>
-                  {category.questions.map((item, questionIndex) => (
-                    <View key={questionIndex} style={styles.faqItem}>
-                      <Text style={styles.faqQuestion}>{item.question}</Text>
-                      <Text style={styles.faqAnswer}>{item.answer}</Text>
-                    </View>
-                  ))}
-                </View>
-              ))}
+            <FlatList
+              style={styles.faqContent}
+              data={faqData}
+              keyExtractor={(item, index) => `category-${index}`}
+              renderItem={({ item: category }) => (
+                  <View style={styles.faqCategory}>
+                    <Text style={styles.faqCategoryTitle}>{category.category}</Text>
+                    {category.questions.map((q, qIndex) => (
+                      <View key={qIndex} style={styles.faqItem}>
+                        <Text style={styles.faqQuestion}>{q.question}</Text>
+                        <Text style={styles.faqAnswer}>{q.answer}</Text>
+                      </View>
+                    ))}
+                  </View>
+              )}
+              ListFooterComponent={() => (
               
               <View style={styles.faqFooter}>
                 <View style={styles.faqContactCard}>
@@ -707,71 +780,22 @@ const ProfileScreen = () => {
                   </View>
                 </View>
               </View>
-            </ScrollView>
+              )}
+            />
           </View>
         </View>
       </Modal>
 
-      {/* Settings Modal */}
       <Modal
-        visible={showSettingsModal}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowSettingsModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.settingsModal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Settings</Text>
-              <TouchableOpacity onPress={() => setShowSettingsModal(false)}>
-                <Ionicons name="close" size={24} color="#374151" />
-              </TouchableOpacity>
-            </View>
-            
-            <ScrollView style={styles.settingsList}>
-              <TouchableOpacity style={styles.settingItem}>
-                <Ionicons name="notifications-outline" size={24} color="#3b82f6" />
-                <Text style={styles.settingText}>Notifications</Text>
-                <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.settingItem}>
-                <Ionicons name="moon-outline" size={24} color="#8b5cf6" />
-                <Text style={styles.settingText}>Dark Mode</Text>
-                <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.settingItem}>
-                <Ionicons name="language-outline" size={24} color="#10b981" />
-                <Text style={styles.settingText}>Language</Text>
-                <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.settingItem}>
-                <Ionicons name="shield-outline" size={24} color="#f59e0b" />
-                <Text style={styles.settingText}>Privacy</Text>
-                <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.settingItem}>
-                <Ionicons name="download-outline" size={24} color="#06b6d4" />
-                <Text style={styles.settingText}>Data Export</Text>
-                <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Badges Modal */}
-      <Modal
-        visible={showAchievementsModal}
-        transparent={true}
-        animationType="slide"
+        isVisible={showAchievementsModal}
+        onBackdropPress={() => setShowAchievementsModal(false)}
+        onBackButtonPress={() => setShowAchievementsModal(false)}
+        style={styles.bottomSheetModal}
+        useNativeDriver
         onRequestClose={() => setShowAchievementsModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.achievementsModal}>
+        <View style={styles.bottomSheetContainer}>
+          <View style={styles.achievementsModalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Badges</Text>
               <TouchableOpacity onPress={() => setShowAchievementsModal(false)}>
@@ -805,15 +829,17 @@ const ProfileScreen = () => {
         </View>
       </Modal>
 
-      {/* Badge Detail Modal */}
       <Modal
-        visible={showBadgeModal}
-        transparent={true}
-        animationType="fade"
+        isVisible={showBadgeModal}
+        onBackdropPress={() => setShowBadgeModal(false)}
+        onBackButtonPress={() => setShowBadgeModal(false)}
+        animationIn="fadeIn"
+        animationOut="fadeOut"
+        backdropOpacity={0.5}
         onRequestClose={() => setShowBadgeModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.badgeDetailModal}>
+        <View style={styles.modalContainerCentered}>
+          <View style={styles.badgeDetailModalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{selectedBadge?.title || 'Badge'}</Text>
               <TouchableOpacity onPress={() => setShowBadgeModal(false)}>
@@ -850,15 +876,16 @@ const ProfileScreen = () => {
         </View>
       </Modal>
 
-      {/* QR Code Modal */}
       <Modal
-        visible={showQRModal}
-        transparent={true}
-        animationType="slide"
+        isVisible={showQRModal}
+        onBackdropPress={() => setShowQRModal(false)}
+        onBackButtonPress={() => setShowQRModal(false)}
+        style={styles.bottomSheetModal}
+        useNativeDriver
         onRequestClose={() => setShowQRModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.qrModal}>
+        <View style={styles.bottomSheetContainer}>
+          <View style={styles.qrModalContent}>
             <View style={styles.qrModalHeader}>
               <Text style={styles.qrModalTitle}>My QR Code</Text>
               <TouchableOpacity onPress={() => setShowQRModal(false)}>
@@ -869,12 +896,21 @@ const ProfileScreen = () => {
             <QRCodeDisplay 
               user={{
                 id: userData.uid,
+                uid: userData.uid,
                 name: getUserDisplayName(),
+                firstName: userData.firstName,
+                lastName: userData.lastName,
                 email: userData.email,
+                address: userData.address,
+                age: userData.age,
+                mobile: userData.mobile || userData.phone,
                 userCode: userData.userCode
               }}
               size={250}
               showControls={true}
+              onQRGenerated={(qrData) => {
+                console.log('QR generated:', qrData);
+              }}
             />
             
             <View style={styles.qrModalFooter}>
@@ -885,8 +921,6 @@ const ProfileScreen = () => {
           </View>
         </View>
       </Modal>
-
-      <Toast />
     </SafeAreaView>
   );
 };
@@ -899,7 +933,6 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
-  // Modern Header Styles
   headerSection: {
     marginBottom: 20,
   },
@@ -931,6 +964,11 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: '#fff',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 35,
   },
   profileInfo: {
     flex: 1,
@@ -1005,17 +1043,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     opacity: 0.8,
   },
-  avatarImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 35,
-  },
-  // Stats Section
-  statsSection: {
-    paddingHorizontal: 20,
-    marginBottom: 24,
-  },
-  // Progress Section (moved from Dashboard)
   progressCard: {
     backgroundColor: '#fff',
     borderRadius: 16,
@@ -1097,7 +1124,6 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     textAlign: 'center',
   },
-  // Section Styles
   section: {
     paddingHorizontal: 20,
     marginBottom: 24,
@@ -1156,7 +1182,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6b7280',
   },
-  // App Info
   appInfoSection: {
     alignItems: 'center',
     paddingHorizontal: 20,
@@ -1178,17 +1203,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#9ca3af',
   },
-  // FAQ Modal Styles
-  faqModal: {
+  faqModalContent: {
     backgroundColor: '#fff',
-    borderRadius: 20,
-    width: width * 0.95,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     height: '85%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 15,
+    paddingTop: 12,
   },
   faqHeader: {
     flexDirection: 'row',
@@ -1263,17 +1283,20 @@ const styles = StyleSheet.create({
     color: '#4b5563',
     marginBottom: 2,
   },
-  // QR Code Modal Styles
-  qrModal: {
+  bottomSheetModal: {
+    justifyContent: 'flex-end',
+    margin: 0,
+  },
+  bottomSheetContainer: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  qrModalContent: {
     backgroundColor: '#fff',
-    borderRadius: 20,
-    width: width * 0.95,
-    maxHeight: '80%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 15,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingTop: 12,
+    paddingBottom: 20,
   },
   qrModalHeader: {
     flexDirection: 'row',
@@ -1299,111 +1322,66 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-  // Modal Styles
-  modalOverlay: {
+  modalContainerCentered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
-  modalContent: {
-    backgroundColor: '#ffffff',
+  logoutModalContent: {
+    backgroundColor: '#fff',
     borderRadius: 16,
     padding: 24,
-    width: '80%',
+    width: '85%',
     alignItems: 'center',
   },
   modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    width: '100%',
     marginBottom: 16,
   },
   modalTitle: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 20,
+    fontWeight: 'bold',
     color: '#1f2937',
+    marginTop: 8,
   },
   modalMessage: {
     fontSize: 16,
-    color: '#4b5563',
+    color: '#6b7280',
     textAlign: 'center',
+    lineHeight: 22,
     marginBottom: 24,
   },
   modalButtons: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
     width: '100%',
+    gap: 12,
   },
   modalButtonCancel: {
-    backgroundColor: '#e5e7eb',
+    flex: 1,
+    backgroundColor: '#f3f4f6',
     paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    alignItems: 'center',
   },
   modalButtonTextCancel: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#374151',
+    color: '#6b7280',
   },
   modalButtonConfirm: {
+    flex: 1,
     backgroundColor: '#ef4444',
     paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    alignItems: 'center',
   },
   modalButtonTextConfirm: {
     fontSize: 16,
     fontWeight: '600',
     color: '#ffffff',
-  },
-  settingsModal: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 24,
-    width: '90%',
-    alignItems: 'center',
-  },
-  settingsList: {
-    width: '100%',
-  },
-  settingItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
-  },
-  settingText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#1f2937',
-    marginLeft: 12,
-  },
-  achievementsModal: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    paddingTop: 12,
-    paddingBottom: 16,
-    width: '95%',
-    maxHeight: '85%',
-    alignSelf: 'center',
-  },
-  achievementsList: {
-    width: '100%',
-  },
-  badgeGridCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
   },
   badgeCarouselCard: {
     backgroundColor: '#fff',
@@ -1415,16 +1393,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
-  },
-  badgeCard: {
-    width: (width - 20 - 20 - 12) / 2, // section padding (20*2) + grid padding (approx) 
-    backgroundColor: '#f9fafb',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#f3f4f6',
   },
   badgeCardH: {
     backgroundColor: '#f9fafb',
@@ -1440,15 +1408,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 6,
     elevation: 3,
-  },
-  badgeIconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 12,
-    overflow: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
   },
   badgeIconWrapH: {
     width: 60,
@@ -1474,12 +1433,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.05)'
   },
-  badgeTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#1f2937',
-    textAlign: 'center',
-  },
   badgeTitleH: {
     fontSize: 13,
     fontWeight: '700',
@@ -1488,12 +1441,6 @@ const styles = StyleSheet.create({
   },
   badgeTitleLocked: {
     color: '#9ca3af',
-  },
-  badgeSubtitle: {
-    fontSize: 11,
-    color: '#6b7280',
-    marginTop: 2,
-    textAlign: 'center',
   },
   badgeSubtitleH: {
     fontSize: 11,
@@ -1532,7 +1479,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginRight: 4
   },
-  // Modal grid items
   badgeCardModal: {
     width: (width * 0.95 - 16 * 2 - 8) / 2,
     backgroundColor: '#f9fafb',
@@ -1559,55 +1505,21 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
   },
-  badgeDetailModal: {
+  badgeDetailModalContent: {
     backgroundColor: '#ffffff',
     borderRadius: 16,
     padding: 20,
     width: '85%',
   },
-  achievementModalItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+  achievementsModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    height: '85%',
+    paddingTop: 12,
   },
-  achievementModalIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  achievementModalContent: {
-    flex: 1,
-  },
-  achievementModalTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1f2937',
-    marginBottom: 2,
-  },
-  achievementModalTitleLocked: {
-    color: '#9ca3af',
-  },
-  achievementModalDescription: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginBottom: 2,
-  },
-  achievementModalDescriptionLocked: {
-    color: '#9ca3af',
-  },
-  achievementModalPoints: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#10b981',
-  },
-  achievementModalPointsLocked: {
-    color: '#9ca3af',
+  achievementsList: {
+    width: '100%',
   },
   loadingContainer: {
     flex: 1,
@@ -1649,4 +1561,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default ProfileScreen
+export default ProfileScreen;

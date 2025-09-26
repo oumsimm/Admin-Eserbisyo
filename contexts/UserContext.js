@@ -240,19 +240,80 @@ export const UserProvider = ({ children }) => {
   // Update user profile
   const updateUserProfile = async (updateData) => {
     if (!user) return { success: false, message: 'User not authenticated' };
-
+  
     try {
-      const result = await authService.updateUserProfile(user.uid, updateData);
+      // Validate avatar-specific data before sending to authService
+      const processedUpdateData = { ...updateData };
+      
+      // Ensure avatar data consistency
+      if (updateData.profilePic && updateData.dicebearStyle && updateData.dicebearSeed) {
+        // DiceBear avatar case
+        processedUpdateData.avatarType = 'dicebear';
+      } else if (updateData.profilePic && !updateData.dicebearStyle) {
+        // Custom uploaded photo case
+        processedUpdateData.avatarType = 'custom';
+        processedUpdateData.dicebearStyle = null;
+        processedUpdateData.dicebearSeed = null;
+      } else {
+        // Initials only case
+        processedUpdateData.avatarType = 'initials';
+        processedUpdateData.profilePic = null;
+        processedUpdateData.dicebearStyle = null;
+        processedUpdateData.dicebearSeed = null;
+      }
+      
+      // Add timestamp for change tracking
+      processedUpdateData.lastProfileUpdate = new Date().toISOString();
+      
+      console.log('Updating user profile with data:', {
+        userId: user.uid,
+        avatarType: processedUpdateData.avatarType,
+        hasProfilePic: !!processedUpdateData.profilePic,
+        hasDiceBearData: !!(processedUpdateData.dicebearStyle && processedUpdateData.dicebearSeed),
+        avatarInitials: processedUpdateData.avatarInitials
+      });
+  
+      const result = await authService.updateUserProfile(user.uid, processedUpdateData);
+      
       if (result.success) {
-        // UserData will be updated automatically via the real-time listener
-        return { success: true, message: 'Profile updated successfully' };
+        // Force a small delay to ensure Firestore write has propagated
+        // This helps with immediate UI updates via the real-time listener
+        setTimeout(() => {
+          console.log('Profile update completed, real-time listener should update UI');
+        }, 100);
+        
+        return { 
+          success: true, 
+          message: 'Profile updated successfully',
+          avatarUpdated: true,
+          avatarType: processedUpdateData.avatarType
+        };
       } else {
         return result;
       }
     } catch (error) {
       console.error('Error updating profile:', error);
-      return { success: false, message: 'Failed to update profile' };
+      return { 
+        success: false, 
+        message: error.message || 'Failed to update profile',
+        error: error.code || 'UNKNOWN_ERROR'
+      };
     }
+  };
+  
+  // Optional: Add a specific method for avatar-only updates
+  const updateUserAvatar = async (avatarData) => {
+    if (!user) return { success: false, message: 'User not authenticated' };
+  
+    const avatarUpdateData = {
+      avatarInitials: avatarData.avatarInitials,
+      profilePic: avatarData.profilePic || null,
+      dicebearStyle: avatarData.dicebearStyle || null,
+      dicebearSeed: avatarData.dicebearSeed || null,
+      lastAvatarUpdate: new Date().toISOString()
+    };
+  
+    return await updateUserProfile(avatarUpdateData);
   };
 
   // Add points to user

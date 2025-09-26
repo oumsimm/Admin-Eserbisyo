@@ -37,144 +37,7 @@ import supabase from '../config/supabaseClient';
 import { useTheme } from '../contexts/ThemeContext';
 import { collection, query, where, onSnapshot, limit, doc, updateDoc, arrayUnion, orderBy, addDoc, serverTimestamp, deleteDoc, arrayRemove, getDoc, setDoc } from 'firebase/firestore';
 import GalleryGrid from '../components/Gallery/GalleryGrid';
-
-const ChatInterface = ({ isVisible, onClose }) => {
-  const [message, setMessage] = useState('');
-  const [chatHistory, setChatHistory] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const scrollViewRef = React.useRef();
-
-  // Initialize Gemini AI
-  const genAI = new GoogleGenerativeAI('AIzaSyCrqSC-ZZt1ZNW2MH1_yD4iIakkEBL9Z8Q');
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-  const handleSendMessage = async () => {
-    if (!message.trim()) return;
-
-    const userMessage = {
-      text: message,
-      sender: 'user',
-      timestamp: new Date().toLocaleTimeString(),
-    };
-
-    setChatHistory(prev => [...prev, userMessage]);
-    setMessage('');
-    setIsLoading(true);
-
-    try {
-      const result = await model.generateContent(message);
-      const response = await result.response;
-      const botMessage = {
-        text: response.text(),
-        sender: 'bot',
-        timestamp: new Date().toLocaleTimeString(),
-      };
-      setChatHistory(prev => [...prev, botMessage]);
-    } catch (error) {
-      console.error('Error getting response:', error);
-      const errorMessage = {
-        text: 'Sorry, I encountered an error. Please try again.',
-        sender: 'bot',
-        timestamp: new Date().toLocaleTimeString(),
-      };
-      setChatHistory(prev => [...prev, errorMessage]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  React.useEffect(() => {
-    if (scrollViewRef.current) {
-      scrollViewRef.current.scrollToEnd({ animated: true });
-    }
-  }, [chatHistory]);
-
-  return (
-    <Modal
-      visible={isVisible}
-      animationType="slide"
-      transparent={true}
-      onRequestClose={onClose}
-    >
-      <View style={styles.chatModal}>
-        <View style={styles.chatContainer}>
-          <View style={styles.chatHeader}>
-            <View style={styles.chatHeaderLeft}>
-              <View style={styles.chatBotIcon}>
-                <Ionicons name="chatbubble-ellipses" size={24} color="#ffffff" />
-              </View>
-              <Text style={styles.chatTitle}>AI Assistant</Text>
-            </View>
-            <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={24} color="#374151" />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView 
-            ref={scrollViewRef}
-            style={styles.chatMessages}
-            onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-          >
-            {chatHistory.map((msg, index) => (
-              <View
-                key={index}
-                style={[
-                  styles.messageContainer,
-                  msg.sender === 'user' ? styles.userMessage : styles.botMessage,
-                ]}
-              >
-                <Text style={[
-                  styles.messageText,
-                  msg.sender === 'user' ? styles.userMessageText : styles.botMessageText,
-                ]}>
-                  {msg.text}
-                </Text>
-                <Text style={styles.messageTime}>{msg.timestamp}</Text>
-              </View>
-            ))}
-            {isLoading && (
-              <View style={[styles.messageContainer, styles.botMessage]}>
-                <Text style={styles.messageText}>Typing...</Text>
-              </View>
-            )}
-          </ScrollView>
-
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.inputContainer}
-          >
-            <TextInput
-              style={styles.input}
-              value={message}
-              onChangeText={setMessage}
-              placeholder="Type your message..."
-              placeholderTextColor="#9ca3af"
-              multiline
-            />
-            <TouchableOpacity
-              style={styles.sendButton}
-              onPress={handleSendMessage}
-              disabled={isLoading}
-            >
-              <Ionicons name="send" size={24} color="#ffffff" />
-            </TouchableOpacity>
-          </KeyboardAvoidingView>
-        </View>
-      </View>
-    </Modal>
-  );
-};
-
-// Quick actions for navigation
-const quickActions = [
-  { title: 'Community Feed', icon: 'people', nav: 'Feed' },
-  { title: 'Create Event', icon: 'add-circle', nav: 'CreateEvent' },
-  { title: 'Find Events', icon: 'search', nav: 'Programs' },
-  { title: 'View Map', icon: 'map', nav: 'Map' },
-  { title: 'Leaderboard', icon: 'trophy', nav: 'Leaderboard' },
-  { title: 'My Profile', icon: 'person', nav: 'Profile' },
-  { title: 'Settings', icon: 'settings', nav: 'Profile' },
-];
+import AIChatInterface from '../components/AIChatInterface';
 
 const DashboardScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
@@ -631,6 +494,27 @@ const DashboardScreen = () => {
     }).start();
   }, []);
 
+  // Personalized Welcome & Call to Action
+  const PersonalizedWelcome = () => {
+    const isNewUser = (userData?.eventsAttended || 0) === 0;
+    const name = getUserDisplayName()?.split(' ')[0] || 'User';
+
+    if (isNewUser) {
+      return (
+        <TouchableOpacity style={styles.ctaCard} onPress={() => navigation.navigate('Programs')}>
+          <View style={styles.ctaIcon}>
+            <Ionicons name="compass-outline" size={24} color="#3b82f6" />
+          </View>
+          <View style={styles.ctaContent}>
+            <Text style={styles.ctaTitle}>Welcome, {name}! Start Your Journey</Text>
+            <Text style={styles.ctaSubtitle}>Explore and join your first community event to make an impact.</Text>
+          </View>
+        </TouchableOpacity>
+      );
+    }
+    return null; // Don't show for experienced users to reduce clutter
+  };
+
   // Show loading state while user data is being fetched
   if (loading || !userData) {
     return (
@@ -698,6 +582,9 @@ const DashboardScreen = () => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
+        {/* Personalized Content */}
+        <PersonalizedWelcome />
+
         {/* Upcoming Events */}
         <View style={styles.section}>
           <View style={styles.sectionHeaderRow}>
@@ -1034,7 +921,7 @@ const DashboardScreen = () => {
       </Modal>
 
       {/* Chat Modal */}
-      <ChatInterface 
+      <AIChatInterface 
         isVisible={isChatOpen} 
         onClose={() => setIsChatOpen(false)} 
       />
@@ -1892,5 +1779,34 @@ const styles = StyleSheet.create({
   fbMenuText: { fontSize: 16, color: '#1f2937', fontWeight: '500' },
 });
 
-export default DashboardScreen;
+// Add styles for the new personalized CTA card
+const personalizedStyles = StyleSheet.create({
+  ctaCard: {
+    flexDirection: 'row',
+    backgroundColor: '#eff6ff',
+    marginHorizontal: 16,
+    marginBottom: 20,
+    padding: 16,
+    borderRadius: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#dbeafe',
+  },
+  ctaIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#dbeafe',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  ctaContent: { flex: 1 },
+  ctaTitle: { fontSize: 16, fontWeight: 'bold', color: '#1e40af', marginBottom: 4 },
+  ctaSubtitle: { fontSize: 14, color: '#1d4ed8', lineHeight: 20 },
+});
 
+// Merge styles
+Object.assign(styles, personalizedStyles);
+
+export default DashboardScreen;

@@ -165,20 +165,24 @@ const EventCard = ({ event, onJoin, isJoined, onDetails }) => (
   </View>
 );
 
-const NoEvents = ({ selectedTab, onCreateEvent, isNewUser, userName, isAdmin }) => (
+const NoEvents = ({ selectedTab, onCreateEvent, isNewUser, userName, isAdmin, hasJoinedEvents }) => (
   <View style={styles.noEventsContainer}>
     <Ionicons name="calendar-outline" size={48} color="#9ca3af" />
     <Text style={styles.noEventsText}>
-      {selectedTab === 'My Events' && isNewUser 
-        ? `Welcome ${userName}!` 
-        : 'No events found'
+      {selectedTab === 'My Events' && isNewUser
+        ? `Welcome, ${userName}!`
+        : selectedTab === 'My Events' && hasJoinedEvents
+        ? 'No Events Match Your Filter'
+        : 'No Events Found'
       }
     </Text>
     <Text style={styles.noEventsSubtext}>
       {selectedTab === 'My Events' 
         ? isNewUser 
-          ? 'You\'re new to E-SERBISYO! Start by exploring and joining community events to make a difference in your neighborhood.'
-          : 'You haven\'t joined any events yet. Explore available events and start making an impact!'
+          ? "You're just getting started! Join your first event to see it here."
+          : hasJoinedEvents
+          ? "You've joined events, but none match the current search. Try clearing your search."
+          : "You haven't joined any events yet. Explore available events and start making an impact!"
         : selectedTab === 'Created by Me' && isAdmin
         ? (isNewUser
           ? 'Ready to make a difference? Create your first community event and bring people together!'
@@ -392,6 +396,7 @@ const EventsScreen = () => {
 
   const userName = getUserDisplayName();
   const isNew = isNewUser();
+  const hasJoinedEvents = (userData?.joinedEvents || []).length > 0;
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
@@ -420,6 +425,7 @@ const EventsScreen = () => {
             isNewUser={isNew}
             userName={userName}
             isAdmin={isAdmin()}
+            hasJoinedEvents={hasJoinedEvents}
           />
         )}
       </ScrollView>
@@ -777,4 +783,3 @@ const styles = StyleSheet.create({
 });
 
 export default EventsScreen;
-
